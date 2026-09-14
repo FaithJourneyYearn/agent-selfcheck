@@ -1,0 +1,68 @@
+# 实验记录模板 —— 复制成 experiments/YYYYMMDD-<组号>-<简述>.yaml 再填
+#
+# 铁律：
+#   1. 这个文件一旦写入，**不再修改**。要重跑就新建一个文件，并在 `vs` 里注明和谁对比。
+#   2. 所有字段都要填。填"不知道"比留空好 —— 留空会让未来的你以为当时记录完整。
+#   3. `conclusion` 只写这一个实验能支撑的话，不要写"这证明了自检可以被奖励出来"这种大话。
+
+id: A                      # A / B / C / D / E，对应 docs/research-design.md 第 5 节
+date: 2026-09-15
+operator: ""               # 谁跑的：claude / codex / workbuddy / 人工
+git_commit: ""             # git rev-parse HEAD
+status: planned            # planned | running | done | failed | aborted
+
+# ---------------------------------------------------------------- 配置
+config:
+  base_model: ""           # 例：Qwen3-4B
+  method: ""               # none | sft | sft-with-selfcheck | grpo | grpo-format-only
+  reward: ""               # 描述奖励函数构成；组 E 必须写明"去掉了可验证项"
+  train_dataset: ""
+  eval_dataset: ""         # HumanEval+ / MBPP+
+  n_train_samples: null
+  n_eval_samples: null
+  epochs: null
+  batch_size: null
+  learning_rate: null
+  max_new_tokens: null     # 关键控制变量：不同组之间必须一致
+  temperature: null
+  seed: []                 # 列出所有随机种子，例如 [0, 1, 2]
+
+# ---------------------------------------------------------------- 泄漏检查
+leakage_check:
+  method: ""               # 怎么检查的（题目文本去重 / 函数签名重叠 / 近似匹配）
+  overlap_found: null      # 发现多少重叠
+  action_taken: ""         # 怎么处理的
+  record_path: ""          # 检查结果的落盘路径
+
+# ---------------------------------------------------------------- 结果
+results:
+  # 每个指标都要给 n（样本量）与 std。只有单次结果就写 n=1，且不要下结论。
+  sr:
+    mean: null
+    std: null
+    n: null
+  pass_at_1:
+    mean: null
+    std: null
+    n: null
+  avg_attempts:
+    mean: null
+    std: null
+    n: null
+  avg_output_tokens:      # 长度控制变量，用来排查"SR 高只是话多"
+    mean: null
+    std: null
+    n: null
+
+# ---------------------------------------------------------------- 判定器
+detector:
+  version: ""              # 判定"自检"的代码版本（commit 或文件哈希）
+  human_audit_n: null      # 人工抽检条数，要求 >= 100
+  kappa: null              # 与人工标注的一致率；< 0.7 则本实验结论作废
+
+# ---------------------------------------------------------------- 结论
+vs: ""                     # 和哪个实验对比
+conclusion: ""             # 只说这一个实验能支撑的话
+supports_hypothesis: ""    # H1 / H2 / H3 / 否证 / 不确定
+caveats: ""                # 局限与可疑之处，必须写，写"暂无"是不合格的
+next: ""                   # 下一步做什么
