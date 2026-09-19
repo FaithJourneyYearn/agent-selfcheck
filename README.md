@@ -14,14 +14,14 @@
 ## 快速上手
 
 ```bash
+# 建环境（Python 3.13）
+python -m venv .venv && .venv\Scripts\activate && pip install -r requirements.txt
+
 # 1. 环境自检（缺 GPU / 缺训练框架只会提示，不会报错）
-<venv>\python.exe -m selfcheck.env_check
+python -m selfcheck.env_check
 
 # 2. 跑完整验证（结构 / 语法 / 测试 / 环境 / 密钥卫生）
-<venv>\python.exe scripts\verify.py
-
-# 本机 venv 路径
-#   C:\Users\LENOVO\.workbuddy\binaries\python\envs\default\Scripts\python.exe
+python scripts\verify.py
 ```
 
 `verify.py` 的退出码就是结论：`0` = 全过。**不允许口头说"已经测过了"。**

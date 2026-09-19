@@ -23,16 +23,16 @@
 
 ## 2. 技术栈与运行方式
 
-- **语言 / 版本**：Python 3.13（本机 venv）
-  - venv 路径：`C:\Users\LENOVO\.workbuddy\binaries\python\envs\default\Scripts\python.exe`
+- **语言 / 版本**：Python 3.13（虚拟环境）
+  - 建环境：`python -m venv .venv`，激活后 `pip install -r requirements.txt`
 - **依赖管理**：`requirements.txt`，原则是**跑不起来之前不要装**
 - **怎么跑起来**（骨架阶段）：
   ```
-  <venv>\python.exe -m selfcheck.env_check
+  python -m selfcheck.env_check
   ```
 - **怎么跑测试 / 验证**：
   ```
-  <venv>\python.exe scripts\verify.py
+  python scripts/verify.py
   ```
 - **实验阶段（尚未开始）**：训练 / 评测入口在 `src/selfcheck/train.py` 与 `eval.py`，
   **目前是空占位**，实现前先在 `TASK.md` 立案。
