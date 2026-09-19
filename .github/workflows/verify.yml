@@ -1,0 +1,32 @@
+name: verify
+
+# 统一验证入口的 CI 版本：每次推 main / 开 PR 都跑一遍 scripts/verify.py。
+# 规则来自 CONVENTIONS.md 第 5 条 —— 退出码非 0 就不算完成。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 跑 verify.py
+        run: python scripts/verify.py
