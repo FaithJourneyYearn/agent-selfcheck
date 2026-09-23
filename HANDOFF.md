@@ -100,38 +100,43 @@
     [PASS] Python 语法检查
     [PASS] 单元测试（1 个文件）
            .....................                                                    [100%]
-           21 passed in 0.07s
+           21 passed in 0.05s
     [PASS] 环境自检通过
-           [WARN] 解释器来源
-                    当前解释器: C:\Users\LENOVO\......
-                    项目环境: 未找到 .venv —— 上面的依赖 / GPU 检查反映的是「当前解释器」，而非项目环境；建好 .venv 后请用它重跑
-                    · current_python: C:\Users\LENOVO\......
-                    · venv_python: None
-                    · venv_exists: False
-                    · is_venv_python: False
+           [PASS] 解释器来源
+                    当前解释器: C:\Users\LENOVO\......\.venv\Scripts\python.exe
+                    项目环境解释器: C:\Users\LENOVO\......\.venv\Scripts\python.exe
+                    两者是同一个解释器，结论代表项目环境
+                    · current_python: C:\Users\LENOVO\......\.venv\Scripts\python.exe
+                    · venv_python: C:\Users\LENOVO\......\.venv\Scripts\python.exe
+                    · venv_exists: True
+                    · is_venv_python: True
              [PASS] Python 版本
-                    Python 3.13.14 @ C:\Users\LENOVO\......
+                    Python 3.13.14 @ C:\Users\LENOVO\......\.venv\Scripts\python.exe
                     · venv: True
                     · version: [3, 13, 14]
              [PASS] 依赖清单
                     核心依赖: 齐全
                     训练依赖: 缺 torch, transformers, trl, datasets（实验期才需要）
-                    评测依赖: 缺 scipy, vllm（实验期才需要）
+                    评测依赖: 缺 numpy, scipy, vllm（实验期才需要）
                     · missing_core: []
                     · missing_train: ['torch', 'transformers', 'trl', 'datasets']
-                    · missing_eval: ['scipy', 'vllm']
+                    · missing_eval: ['numpy', 'scipy', 'vllm']
              [WARN] GPU
                     未安装 torch，跳过（实验期再查）
                     · cuda: None
              [PASS] 磁盘空间
-                    可用 125.2 GB
-                    · free_gb: 125.2
+                    可用 125.1 GB
+                    · free_gb: 125.1
     [PASS] 无遗留调试代码
     [PASS] 无硬编码密钥
   ------------------------------------------------------------------
   结果：OK —— 6 项全部通过
   EXIT=0
   ```
+
+  > 上面这份是**用项目 `.venv` 跑的**，所以 `解释器来源` 是 PASS。
+  > 在建 `.venv` 之前它是 WARN —— 那才是"结论不代表项目环境"的真实状态。
+  > 两种输出都保留了意义：WARN 版见本文件下方三态复核的「情形 C」。
 
   三态分支的人工复核（打桩 `find_project_venv`，确认报告文本本身，不只是断言）：
 
@@ -172,11 +177,23 @@
      别塞进一个没人读的地方还以为是"结构化输出"。
 
   附带一个环境坑：本机跑 `verify.py` 的解释器必须装 `pytest`，否则
-  `check_tests` 会以 `ModuleNotFoundError` 报错。
-  稳妥做法是**先按 CONVENTIONS.md 第 2 节建好项目 `.venv`**，
-  再用 `.venv` 里的解释器跑 —— 顺带也让本报告各项检查的结论真正代表项目环境。
-  （临时办法：任选一个装了 pytest 的解释器，本次整改是在一个 WorkBuddy 托管的
-  隔离 venv 里跑的，不在仓库内。）
+  `check_tests` 会以 `ModuleNotFoundError` 报错、并连带 `check_environment` FAIL。
+  本次整改**顺手把项目 `.venv` 建好了**（见下方「项目环境」），所以现在照
+  CONVENTIONS.md 第 2 节走就行，不会再撞上这个坑。
+
+  另一个坑（踩过一次）：**本机 pip 的默认源（清华镜像）在沙箱内不可用**，
+  报 `Could not find a version that satisfies the requirement pytest (from versions: none)`
+  —— 看起来像"包不存在"，其实是索引取不到（`curl` 打该源明明是 200）。
+  解法是显式指定官方源：`pip install --index-url https://pypi.org/simple -r requirements.txt`。
+
+- **项目环境（本次新建）**：
+  - `.venv/` 已按 CONVENTIONS.md 第 2 节建好：`python -m venv .venv`
+  - 已装 `requirements.txt` 的当前阶段依赖：**pytest 9.1.1**
+  - 建好之后 `check_env_identity` 由 WARN 转 **PASS**，报告原文变成
+    「两者是同一个解释器，**结论代表项目环境**」——
+    这正是这个 PR 想要的效果，现在有真实环境兜住了。
+  - `.venv/` 已被 `.gitignore` 忽略，**不入库**（正常，虚拟环境本就不该提交）
+  - 建环境用的解释器是 `Python 3.13.14`，符合 CONVENTIONS 第 2 节的 3.13
 
 - **关于 Copilot 那条 High（记录一下，避免下次重复排查）**：
   它标为 critical/high 的第一条是
@@ -193,10 +210,9 @@
   - Issue #1 的第三条（`check_tests` 异常路径绕过 `report()`、退出码不可靠）
     **仍然没修**，因为改它会碰到 `scripts/verify.py`，那是 T-002 明令禁止的边界。
     需要单独开一个任务（建议 T-011）并放宽该边界。
-  - 仓库仍**没有项目 `.venv`**，所以本机 `verify.py` 给出的依赖/GPU 结论
-    始终只代表"当前解释器"。这正是 `check_env_identity` 存在的意义，
-    但真实项目环境仍未建立。
-  - 本机磁盘可用 125.2 GB（比 T-001 时的 15.7 GB 宽裕很多，训练前不再是瓶颈）。
+  - `requirements.txt` 里 `pytest>=8.0`，实装的是 **9.1.1**（满足约束）。
+    没装训练/评测层依赖 —— 按"跑不起来之前不要装"的原则，实验期再解注释。
+  - 本机磁盘可用 125.1 GB（比 T-001 时的 15.7 GB 宽裕很多，训练前不再是瓶颈）。
 
 - **给下一个人的提醒**：
   1. **commit hash 有自指问题**：往 `HANDOFF.md` 里填自己的 hash 会改变内容、
@@ -206,6 +222,10 @@
   2. **下一步仍是 T-002**，见 `TASK.md`。
   3. 别忘了先给 `scripts/verify.py` 的异常路径（Issue #1 第三条）单开一个任务，
      不要顺手改它 —— 那是 T-002 的边界。
-  4. 建项目 `.venv` 这件事一直没做，建议在开 T-002 之前先做掉：
-     它会同时解决"报告不代表项目环境"和"本机没 pytest"两个问题。
+  4. **项目 `.venv` 已建好**，跑验证请一律用它：
+     ```
+     .venv\Scripts\python.exe scripts\verify.py     # Windows
+     .venv/bin/python scripts/verify.py             # *nix
+     ```
+     这样 `解释器来源` 才是 PASS，报告里的依赖 / GPU 结论才代表项目环境。
 
