@@ -4,6 +4,7 @@
   - 缺 GPU / 缺训练框架必须只 warn，绝不能 fail（否则骨架阶段验证永远是红的）
   - has_failure 只对 FAIL 敏感
   - 每个检查都必须返回结构化的东西，不能只是 print
+  - 解释器来源必须如实分类：用项目 venv 跑才算 OK，其余一律 warn
 """
 
 import os
@@ -62,6 +63,58 @@ def test_缺核心依赖才算失败():
         assert set(r.extra["missing_core"]) == set(ec.CORE_DEPS)
     finally:
         ec._has_module = real
+
+
+# ------------------------------------------------------------------ 解释器来源
+def test_找不到_venv_时必须_warn_而不是_fail():
+    """骨架阶段 .venv 常不存在，这一条绝不能阻断验证。
+
+    同时它必须是 WARN：如果这里给出 PASS，就等于在说
+    "我检查的就是项目环境"——那是假的，检查的其实是当前解释器。
+    """
+    real = ec.find_project_venv
+    try:
+        ec.find_project_venv = lambda: None
+        r = ec.check_env_identity()
+        assert r.status == ec.WARN, "未找到项目环境应当是 warn（不阻断但必须提醒）"
+        assert r.extra["venv_exists"] is False
+        assert r.extra["current_python"], "必须报出当前解释器的绝对路径"
+    finally:
+        ec.find_project_venv = real
+
+
+def test_用venv跑时报告结论代表项目环境():
+    real_find, real_exe = ec.find_project_venv, ec.sys.executable
+    try:
+        ec.find_project_venv = lambda: real_exe  # 假装当前就是项目环境
+        ec.sys.executable = real_exe
+        r = ec.check_env_identity()
+        assert r.status == ec.OK
+        assert r.extra["is_venv_python"] is True
+    finally:
+        ec.find_project_venv, ec.sys.executable = real_find, real_exe
+
+
+def test_venv存在但用的不是它时必须_warn并给出建议命令():
+    """这是最容易被忽视的情形：环境建好了，但人拿系统 Python 跑了 verify。
+
+    此时结论不代表项目环境，必须提醒，并且给出的命令要能在本平台直接粘贴。
+    """
+    real = ec.find_project_venv
+    try:
+        ec.find_project_venv = lambda: r"C:\fake\.venv\Scripts\python.exe"
+        r = ec.check_env_identity()
+        assert r.status == ec.WARN
+        assert r.extra["is_venv_python"] is False
+        expect = "Scripts" if os.name == "nt" else "bin/python"
+        assert expect in r.detail, "建议命令要按平台给，别让 Windows 用户敲 POSIX 路径"
+    finally:
+        ec.find_project_venv = real
+
+
+def test_解释器来源排在检查列表最前():
+    """报告的第一段应当先讲清前提，再给依赖/GPU 结论。"""
+    assert ec.ALL_CHECKS[0] is ec.check_env_identity
 
 
 # ------------------------------------------------------------------ 汇总
