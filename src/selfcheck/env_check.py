@@ -84,15 +84,25 @@ def check_env_identity() -> CheckResult:
              "venv_exists": venv is not None, "is_venv_python": venv is not None and
              os.path.normcase(os.path.abspath(cur)) == os.path.normcase(venv)}
 
+    # 两条路径都写进 `展示项`，而不是塞进 extra ——
+    # extra 是给程序读的，进不了报告；人类读者能看见的只有展示项。
+    shown_cur = f"当前解释器: {cur}"
+
     if venv is None:
         return CheckResult(
             "解释器来源", WARN,
-            f"当前解释器: {cur} | 未找到项目环境 .venv —— "
-            "上面的依赖 / GPU 检查反映的是这个解释器，"
+            f"{shown_cur} | 项目环境: 未找到 .venv —— "
+            "上面的依赖 / GPU 检查反映的是「当前解释器」，"
             "而非项目环境；建好 .venv 后请用它重跑", extra)
+
+    shown_venv = f"项目环境解释器: {venv}"
+
     if extra["is_venv_python"]:
-        return CheckResult("解释器来源", OK,
-                           f"项目环境: {venv}（正在用它检查，结论代表项目环境）", extra)
+        # 两者是同一条路径：仍然把两条都报出来，并明说它们是同一个。
+        # 只写一行"项目环境: xxx"会让读者不知道当前解释器跑哪去了。
+        return CheckResult(
+            "解释器来源", OK,
+            f"{shown_cur} | {shown_venv} | 两者是同一个解释器，结论代表项目环境", extra)
 
     # 建议命令按平台给，别让 Windows 用户去敲 POSIX 路径
     if os.name == "nt":
@@ -101,7 +111,7 @@ def check_env_identity() -> CheckResult:
         suggested = ".venv/bin/python scripts/verify.py"
     return CheckResult(
         "解释器来源", WARN,
-        f"当前解释器: {cur} | 项目环境已存在但**不是它**: {venv} —— "
+        f"{shown_cur} | {shown_venv} | 两者不同："
         f"本次结论不代表项目环境，请改用: {suggested}", extra)
 
 
@@ -182,6 +192,13 @@ def has_failure(results: list[CheckResult]) -> bool:
 
 
 def format_report(results: list[CheckResult]) -> str:
+    """把检查结果渲染成人类可读的报告。
+
+    同时渲染 `detail` 与 `extra`。**这一点很重要**：
+    过去这里只读 `detail`，于是凡是"写进 extra"的信息（依赖缺失清单、
+    磁盘余量、解释器路径……）在报告里全都凭空消失 ——
+    测试却因为直接读属性而全部通过，形成一种"绿着但看不见"的假绿。
+    """
     icon = {OK: "PASS", WARN: "WARN", FAIL: "FAIL"}
     lines = []
     for r in results:
@@ -189,6 +206,8 @@ def format_report(results: list[CheckResult]) -> str:
         for part in r.detail.split(" | "):
             if part:
                 lines.append(f"         {part}")
+        for key, value in r.extra.items():
+            lines.append(f"         · {key}: {value}")
     return "\n".join(lines)
 
 
