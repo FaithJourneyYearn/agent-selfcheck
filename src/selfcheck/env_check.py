@@ -5,6 +5,9 @@
   2. **warning 不等于 error**：骨架阶段没有 GPU、没有训练框架是正常的，
      不该让验证失败。只有"根本跑不下去"的问题才算 fail。
   3. 输出既可读（给人看），也可结构化（给脚本判断）。
+  4. **说清楚在检查哪个环境**：所有检查用的都是当前解释器（`sys.executable`）。
+     若 `verify.py` 不是用项目 `.venv` 跑的，结论就不代表项目环境 ——
+     见 `check_env_identity`，它负责把这个前提摊开讲，而不是假装没这回事。
 
 直接运行：
     python -m selfcheck.env_check
@@ -46,6 +49,70 @@ class CheckResult:
 
 def _has_module(name: str) -> bool:
     return importlib.util.find_spec(name) is not None
+
+
+# 项目根目录：本文件位于 <root>/src/selfcheck/env_check.py
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+# 项目虚拟环境里解释器的相对路径（建环境的方式见 CONVENTIONS.md 第 2 节）
+VENV_PY_RELPATH = ("Scripts", "python.exe") if os.name == "nt" else ("bin", "python")
+
+
+def find_project_venv() -> str | None:
+    """返回项目 `.venv` 里解释器的绝对路径；不存在则返回 None。
+
+    抽成独立函数是为了让测试能打桩 —— 环境探测不该依赖本机碰巧有没有 .venv。
+    """
+    p = os.path.join(PROJECT_ROOT, ".venv", *VENV_PY_RELPATH)
+    return p if os.path.isfile(p) else None
+
+
+def check_env_identity() -> CheckResult:
+    """说清楚"到底在检查哪个环境"。
+
+    存在的意义：`verify.py` 的其余检查用的都是 `sys.executable`，
+    也就是**当前正在跑 verify 的那个解释器**。如果项目 `.venv` 还没建、
+    人拿系统 Python 跑了 verify，那么"Python 版本 PASS"这一条检查的其实是它自己，
+    而不是项目环境 —— 这是一个看起来很绿的假结论。
+
+    本检查不阻断（骨架阶段没有 .venv 是正常的），但**必须把人引到正确命令上**，
+    否则 CI 绿了不代表本机绿。
+    """
+    cur = sys.executable
+    venv = find_project_venv()
+    extra = {"current_python": cur, "venv_python": venv,
+             "venv_exists": venv is not None, "is_venv_python": venv is not None and
+             os.path.normcase(os.path.abspath(cur)) == os.path.normcase(venv)}
+
+    # 两条路径都写进 `展示项`，而不是塞进 extra ——
+    # extra 是给程序读的，进不了报告；人类读者能看见的只有展示项。
+    shown_cur = f"当前解释器: {cur}"
+
+    if venv is None:
+        return CheckResult(
+            "解释器来源", WARN,
+            f"{shown_cur} | 项目环境: 未找到 .venv —— "
+            "上面的依赖 / GPU 检查反映的是「当前解释器」，"
+            "而非项目环境；建好 .venv 后请用它重跑", extra)
+
+    shown_venv = f"项目环境解释器: {venv}"
+
+    if extra["is_venv_python"]:
+        # 两者是同一条路径：仍然把两条都报出来，并明说它们是同一个。
+        # 只写一行"项目环境: xxx"会让读者不知道当前解释器跑哪去了。
+        return CheckResult(
+            "解释器来源", OK,
+            f"{shown_cur} | {shown_venv} | 两者是同一个解释器，结论代表项目环境", extra)
+
+    # 建议命令按平台给，别让 Windows 用户去敲 POSIX 路径
+    if os.name == "nt":
+        suggested = r".venv\Scripts\python.exe scripts\verify.py"
+    else:
+        suggested = ".venv/bin/python scripts/verify.py"
+    return CheckResult(
+        "解释器来源", WARN,
+        f"{shown_cur} | {shown_venv} | 两者不同："
+        f"本次结论不代表项目环境，请改用: {suggested}", extra)
 
 
 def check_python() -> CheckResult:
@@ -102,7 +169,7 @@ def check_gpu() -> CheckResult:
 def check_disk() -> CheckResult:
     """训练会吃掉大量磁盘，先看一眼。"""
     try:
-        total, _, free = shutil.disk_usage(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+        total, _, free = shutil.disk_usage(PROJECT_ROOT)
         free_gb = free / 1024 ** 3
         detail = f"可用 {free_gb:.1f} GB"
         # 10GB 以下提示，但不阻断
@@ -112,7 +179,8 @@ def check_disk() -> CheckResult:
         return CheckResult("磁盘空间", WARN, f"无法读取: {e}", {})
 
 
-ALL_CHECKS = [check_python, check_deps, check_gpu, check_disk]
+# 顺序即报告顺序：先讲清楚"这台机器在哪个环境里"，再报该环境的具体情况。
+ALL_CHECKS = [check_env_identity, check_python, check_deps, check_gpu, check_disk]
 
 
 def run_all() -> list[CheckResult]:
@@ -124,6 +192,13 @@ def has_failure(results: list[CheckResult]) -> bool:
 
 
 def format_report(results: list[CheckResult]) -> str:
+    """把检查结果渲染成人类可读的报告。
+
+    同时渲染 `detail` 与 `extra`。**这一点很重要**：
+    过去这里只读 `detail`，于是凡是"写进 extra"的信息（依赖缺失清单、
+    磁盘余量、解释器路径……）在报告里全都凭空消失 ——
+    测试却因为直接读属性而全部通过，形成一种"绿着但看不见"的假绿。
+    """
     icon = {OK: "PASS", WARN: "WARN", FAIL: "FAIL"}
     lines = []
     for r in results:
@@ -131,6 +206,8 @@ def format_report(results: list[CheckResult]) -> str:
         for part in r.detail.split(" | "):
             if part:
                 lines.append(f"         {part}")
+        for key, value in r.extra.items():
+            lines.append(f"         · {key}: {value}")
     return "\n".join(lines)
 
 
